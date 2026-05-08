@@ -1,0 +1,9 @@
+rules_version = '2';
+// Open access for development only. Lock down before production (Auth, path checks, size, content-type).
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      allow read, write: if true;
+    }
+  }
+}

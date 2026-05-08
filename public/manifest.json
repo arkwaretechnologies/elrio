@@ -1,0 +1,23 @@
+{
+  "name": "El Rio - POS",
+  "short_name": "El Rio POS",
+  "description": "Point of Sale system for your business.",
+  "start_url": "/pos",
+  "display": "standalone",
+  "background_color": "#FFFFFF",
+  "theme_color": "#F97316",
+  "icons": [
+    {
+      "src": "/El%20Rio%20Logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/El%20Rio%20Logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
