@@ -72,14 +72,14 @@ function KeypadButton({
 
 export function PaymentSuccessDialog({ isOpen, onClose, details }: PaymentSuccessDialogProps) {
   const { toast } = useToast();
-  const [pickupInput, setPickupInput] = useState(String(details.pickupNumber));
+  const [pickupInput, setPickupInput] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
-      setPickupInput(String(details.pickupNumber));
+      setPickupInput("");
     }
-  }, [isOpen, details.pickupNumber]);
+  }, [isOpen, details.saleId]);
 
   if (!isOpen) return null;
 

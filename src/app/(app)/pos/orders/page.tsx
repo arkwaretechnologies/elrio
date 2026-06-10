@@ -8,7 +8,6 @@ import { getSales } from "@/services/sales-service";
 import { getPayments } from "@/services/payment-service";
 import { useAuth } from "@/context/auth-context";
 import { CakeLoader } from "@/components/cake-loader";
-import { RecentCompletedOrders } from "@/components/recent-completed-orders";
 import type { Sale, Payment } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -18,7 +17,6 @@ export default function PosOrdersPage() {
   const [sales, setSales] = useState<Sale[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loadedStoreId, setLoadedStoreId] = useState<string | null>(null);
-  const [liveSales, setLiveSales] = useState<Sale[]>([]);
   const [ordersDate, setOrdersDate] = useState<DateRange | undefined>({
     from: startOfDay(new Date()),
     to: endOfDay(new Date()),
@@ -34,7 +32,6 @@ export default function PosOrdersPage() {
       .then(([fetchedSales, fetchedPayments]) => {
         if (!cancelled) {
           setSales(fetchedSales);
-          setLiveSales(fetchedSales);
           setPayments(fetchedPayments);
           setLoadedStoreId(storeId);
         }
@@ -43,7 +40,6 @@ export default function PosOrdersPage() {
         console.error("Failed to load orders:", err);
         if (!cancelled) {
           setSales([]);
-          setLiveSales([]);
           setPayments([]);
           setLoadedStoreId(storeId);
         }
@@ -82,9 +78,6 @@ export default function PosOrdersPage() {
   return (
     <div className="flex h-full min-h-0 flex-col gap-4 overflow-y-auto p-4 sm:p-6">
       <div className="min-w-0 flex-1 space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Orders</h1>
-        </div>
         <OrderHistoryClient
           key={currentStore.id}
           initialSales={sales}
@@ -92,9 +85,7 @@ export default function PosOrdersPage() {
           variant="embedded"
           dateRange={ordersDate}
           onDateRangeChange={setOrdersDate}
-          onSalesChange={setLiveSales}
         />
-        <RecentCompletedOrders sales={liveSales} />
       </div>
     </div>
   );

@@ -28,6 +28,7 @@ import { updateSaleTableAssignment } from '@/services/sales-service';
 import { POS_FEATURE_TABLES } from '@/lib/pos-features';
 import { getStorePrinterSettings } from '@/services/printer-settings-service';
 import { printKitchenCopy } from '@/lib/printers/print-sale';
+import { formatPickupNumber } from '@/lib/pickup-number';
 
 function StatCard({ icon: Icon, title, value, color }: { icon?: React.ElementType, title: string, value: string | number, color: string }) {
   return (
@@ -132,14 +133,6 @@ export function OrderHistoryClient({
       });
     })();
 
-    if (variant === "embedded") {
-      return [...inRange].sort((a, b) => {
-        const dateA = a.type === "Sale" ? a.createdAt : a.paymentDate;
-        const dateB = b.type === "Sale" ? b.createdAt : b.paymentDate;
-        return dateA.getTime() - dateB.getTime();
-      });
-    }
-
     return inRange;
   }, [sales, payments, date, variant]);
   
@@ -221,6 +214,7 @@ export function OrderHistoryClient({
           <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
             {format(new Date(transaction.paymentDate), 'MMM d, h:mm a')}
           </TableCell>
+          <TableCell className="text-muted-foreground">—</TableCell>
           <TableCell>
             <span className="font-semibold tabular-nums">₱{transaction.amount.toFixed(2)}</span>
             <span className="mt-0.5 block max-w-[220px] truncate text-xs text-muted-foreground">
@@ -246,6 +240,9 @@ export function OrderHistoryClient({
       >
         <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
           {format(new Date(sale.createdAt), 'MMM d, h:mm a')}
+        </TableCell>
+        <TableCell className="text-lg font-bold tabular-nums text-primary">
+          {sale.pickupNumber != null ? `#${formatPickupNumber(sale.pickupNumber)}` : '—'}
         </TableCell>
         <TableCell>
           <span
@@ -356,7 +353,9 @@ export function OrderHistoryClient({
   return (
     <>
     <div className="space-y-6">
-      <div className="flex flex-wrap gap-4 justify-between items-center">
+      <div className={cn(
+        "flex flex-wrap gap-4 items-center justify-between",
+      )}>
         {variant === 'standalone' ? (
           <div>
             <h1 className="text-3xl font-bold">Order History</h1>
@@ -365,7 +364,7 @@ export function OrderHistoryClient({
             </p>
           </div>
         ) : (
-          <div className="min-w-0 flex-1" />
+          <h1 className="text-2xl font-bold tracking-tight">Orders</h1>
         )}
         <Popover>
             <PopoverTrigger asChild>
@@ -373,42 +372,59 @@ export function OrderHistoryClient({
                     id="date"
                     variant={"outline"}
                     className={cn(
-                        "w-[300px] justify-start text-left font-normal",
-                        !date && "text-muted-foreground"
+                        variant === "embedded" ? "w-[220px]" : "w-[300px]",
+                        "justify-start text-left font-normal",
+                        !date?.from && "text-muted-foreground"
                     )}
                 >
                     <CalendarIcon className="mr-2 h-4 w-4" />
                     {date?.from ? (
-                        date.to ? (
+                        variant === "embedded" || !date.to || format(date.from, "yyyy-MM-dd") === format(date.to, "yyyy-MM-dd") ? (
+                            format(date.from, "LLL dd, y")
+                        ) : (
                             <>
                                 {format(date.from, "LLL dd, y")} -{" "}
                                 {format(date.to, "LLL dd, y")}
                             </>
-                        ) : (
-                            format(date.from, "LLL dd, y")
                         )
                     ) : (
-                        <span>Pick a date range</span>
+                        <span>Pick a date</span>
                     )}
                 </Button>
             </PopoverTrigger>
             <PopoverContent className="w-auto p-0 flex" align="end">
                 <div className="flex flex-col space-y-2 p-2 border-r">
-                    <Button variant="ghost" className="justify-start" onClick={() => setDate({ from: new Date(), to: new Date() })}>Today</Button>
-                    <Button variant="ghost" className="justify-start" onClick={() => { const yesterday = subDays(new Date(), 1); setDate({ from: yesterday, to: yesterday }); }}>Yesterday</Button>
-                    <Button variant="ghost" className="justify-start" onClick={() => setDate({ from: startOfMonth(new Date()), to: endOfMonth(new Date()) })}>This Month</Button>
-                    <Button variant="ghost" className="justify-start" onClick={() => setDate({ from: startOfMonth(subMonths(new Date(), 1)), to: endOfMonth(subMonths(new Date(), 1)) })}>Last Month</Button>
-                    <Button variant="ghost" className="justify-start" onClick={() => setDate({ from: subDays(new Date(), 90), to: new Date() })}>Last 90 Days</Button>
+                    <Button variant="ghost" className="justify-start" onClick={() => setDate({ from: startOfDay(new Date()), to: endOfDay(new Date()) })}>Today</Button>
+                    <Button variant="ghost" className="justify-start" onClick={() => { const yesterday = subDays(new Date(), 1); setDate({ from: startOfDay(yesterday), to: endOfDay(yesterday) }); }}>Yesterday</Button>
+                    {variant !== "embedded" ? (
+                      <>
+                        <Button variant="ghost" className="justify-start" onClick={() => setDate({ from: startOfMonth(new Date()), to: endOfMonth(new Date()) })}>This Month</Button>
+                        <Button variant="ghost" className="justify-start" onClick={() => setDate({ from: startOfMonth(subMonths(new Date(), 1)), to: endOfMonth(subMonths(new Date(), 1)) })}>Last Month</Button>
+                        <Button variant="ghost" className="justify-start" onClick={() => setDate({ from: subDays(new Date(), 90), to: new Date() })}>Last 90 Days</Button>
+                      </>
+                    ) : null}
                 </div>
                  <Separator orientation="vertical" />
-                <Calendar
+                {variant === "embedded" ? (
+                  <Calendar
+                    initialFocus
+                    mode="single"
+                    defaultMonth={date?.from}
+                    selected={date?.from}
+                    onSelect={(d) =>
+                      setDate(d ? { from: startOfDay(d), to: endOfDay(d) } : undefined)
+                    }
+                  />
+                ) : (
+                  <Calendar
                     initialFocus
                     mode="range"
                     defaultMonth={date?.from}
                     selected={date}
                     onSelect={setDate}
                     numberOfMonths={2}
-                />
+                  />
+                )}
             </PopoverContent>
         </Popover>
       </div>
@@ -423,7 +439,7 @@ export function OrderHistoryClient({
 
       <Card>
         <CardHeader>
-          <CardTitle>{variant === 'embedded' ? 'Paid' : 'Transactions'}</CardTitle>
+          <CardTitle>Transactions</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
@@ -432,6 +448,7 @@ export function OrderHistoryClient({
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-[120px]">Time</TableHead>
+                    <TableHead className="w-[56px]">#</TableHead>
                     <TableHead>Order</TableHead>
                     <TableHead className="w-[110px]">Type</TableHead>
                     <TableHead className="w-[260px] text-right">Actions</TableHead>
@@ -442,8 +459,8 @@ export function OrderHistoryClient({
                     transactions.map((t) => renderEmbeddedRow(t))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={4} className="h-24 text-center text-muted-foreground">
-                        Nothing in this range.
+                      <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
+                        No transactions for this date.
                       </TableCell>
                     </TableRow>
                   )}
