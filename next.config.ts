@@ -71,8 +71,35 @@ const withPWA = require('next-pwa')({
 
 import type {NextConfig} from 'next';
 
+/** Map App Hosting FIREBASE_WEBAPP_CONFIG into NEXT_PUBLIC_* for client bundle inlining. */
+function firebasePublicEnvFromWebapp(): Record<string, string> {
+  const mappings: [string, string][] = [
+    ['NEXT_PUBLIC_FIREBASE_API_KEY', 'apiKey'],
+    ['NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN', 'authDomain'],
+    ['NEXT_PUBLIC_FIREBASE_PROJECT_ID', 'projectId'],
+    ['NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET', 'storageBucket'],
+    ['NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID', 'messagingSenderId'],
+    ['NEXT_PUBLIC_FIREBASE_APP_ID', 'appId'],
+    ['NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID', 'measurementId'],
+  ];
+  const out: Record<string, string> = {};
+  const raw = process.env.FIREBASE_WEBAPP_CONFIG;
+  if (!raw) return out;
+  try {
+    const parsed = JSON.parse(raw) as Record<string, string | undefined>;
+    for (const [envKey, jsonKey] of mappings) {
+      if (!process.env[envKey] && parsed[jsonKey]) {
+        out[envKey] = String(parsed[jsonKey]);
+      }
+    }
+  } catch {
+    // ignore malformed FIREBASE_WEBAPP_CONFIG
+  }
+  return out;
+}
+
 const nextConfig: NextConfig = {
-  /* config options here */
+  env: firebasePublicEnvFromWebapp(),
   typescript: {
     ignoreBuildErrors: true,
   },
