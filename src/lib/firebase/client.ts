@@ -44,7 +44,7 @@ function canUseFirestorePersistentCache(): boolean {
 
 // Initialize Firebase for the client.
 // Local dev: NEXT_PUBLIC_FIREBASE_* from .env.local.
-// App Hosting: apphosting.yaml env vars and/or initializeApp() with no args (FIREBASE_WEBAPP_CONFIG).
+// App Hosting: initializeApp() with no args (FIREBASE_WEBAPP_CONFIG injected at build).
 const clientApp = !getApps().length
   ? hasExplicitFirebaseConfig(clientConfig)
     ? initializeApp(clientConfig)
