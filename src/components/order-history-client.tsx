@@ -26,6 +26,8 @@ import { saleServiceLabel } from '@/lib/order-service-label';
 import { AssignTableDialog } from '@/components/assign-table-dialog';
 import { updateSaleTableAssignment } from '@/services/sales-service';
 import { POS_FEATURE_TABLES } from '@/lib/pos-features';
+import { getStorePrinterSettings } from '@/services/printer-settings-service';
+import { printKitchenCopy } from '@/lib/printers/print-sale';
 
 function StatCard({ icon: Icon, title, value, color }: { icon?: React.ElementType, title: string, value: string | number, color: string }) {
   return (
@@ -78,10 +80,10 @@ export function OrderHistoryClient({
   initialPayments: Payment[];
   /** `embedded`: compact header for POS Orders (parent page supplies title). */
   variant?: 'standalone' | 'embedded';
-  /** Controlled calendar range (POS Orders page + queue sidebar). */
+  /** Controlled calendar range (POS Orders page). */
   dateRange?: DateRange;
   onDateRangeChange?: (range: DateRange | undefined) => void;
-  /** Mirror of internal sales state for parent (queue). */
+  /** Mirror of internal sales state for parent. */
   onSalesChange?: (sales: Sale[]) => void;
 }) {
   const [sales, setSales] = useState<Sale[]>(initialSales);
@@ -98,6 +100,7 @@ export function OrderHistoryClient({
   const [saleAssignTarget, setSaleAssignTarget] = useState<Sale | null>(null);
   const [isPinDialogOpen, setIsPinDialogOpen] = useState(false);
   const [isConfirmVoidOpen, setIsConfirmVoidOpen] = useState(false);
+  const [printingKitchenSaleId, setPrintingKitchenSaleId] = useState<string | null>(null);
   const { user, currentStore } = useAuth();
   const { toast } = useToast();
 
@@ -190,6 +193,27 @@ export function OrderHistoryClient({
     }
   }
 
+  const handleKitchenReprint = async (sale: Sale) => {
+    if (!currentStore || sale.status === 'VOIDED') return;
+    setPrintingKitchenSaleId(sale.id);
+    try {
+      const printerSettings = await getStorePrinterSettings(currentStore.id);
+      await printKitchenCopy(sale, printerSettings);
+      toast({
+        title: 'Kitchen ticket sent',
+        description: 'Sent to the kitchen printer.',
+      });
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Kitchen print failed',
+        description: error instanceof Error ? error.message : 'Check printer settings.',
+      });
+    } finally {
+      setPrintingKitchenSaleId(null);
+    }
+  };
+
   const renderEmbeddedRow = (transaction: CombinedTransaction) => {
     if (transaction.type === 'Payment') {
       return (
@@ -254,15 +278,11 @@ export function OrderHistoryClient({
               size="sm"
               variant="outline"
               className="gap-1"
-              onClick={() =>
-                toast({
-                  title: 'Kitchen print',
-                  description: 'Not connected yet.',
-                })
-              }
+              disabled={sale.status === 'VOIDED' || printingKitchenSaleId === sale.id}
+              onClick={() => void handleKitchenReprint(sale)}
             >
               <Printer className="h-3.5 w-3.5" />
-              Print
+              {printingKitchenSaleId === sale.id ? 'Printing…' : 'Kitchen'}
             </Button>
             <Button
               type="button"
