@@ -14,6 +14,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import type { Sale } from '@/lib/types';
 import { format } from 'date-fns';
 import { Badge } from "./ui/badge";
+import { displayOrderNumber } from '@/lib/order-number';
+import { formatPickupNumber } from '@/lib/pickup-number';
 
 interface TransactionItemsDialogProps {
   sale: Sale;
@@ -29,6 +31,12 @@ export function TransactionItemsDialog({ sale, isOpen, onClose }: TransactionIte
         <DialogHeader>
           <DialogTitle>Transaction Details</DialogTitle>
           <DialogDescription className="space-y-1">
+            <span className="block text-lg font-bold text-primary">
+              Order #{formatPickupNumber(sale.pickupNumber)}
+            </span>
+            <span className="block font-mono text-xs text-muted-foreground">
+              Ref {displayOrderNumber(sale.orderNumber, sale.id)}
+            </span>
             <span className="block">
               Items for sale on {format(sale.timestamp, "MMM d, yyyy, h:mm a")}
             </span>

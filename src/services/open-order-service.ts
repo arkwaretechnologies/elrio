@@ -8,10 +8,12 @@ import {
   onSnapshot,
   query,
   serverTimestamp,
+  updateDoc,
   where,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import type { CartItem, OpenOrder, SeniorDiscountDetails } from "@/lib/types";
+import { generateOrderNumber } from "@/lib/order-number";
 
 const COLLECTION = "openOrders";
 
@@ -33,6 +35,7 @@ export type CreateOpenOrderInput = {
   total: number;
   tableId?: string | null;
   tableLabel?: string | null;
+  serviceType?: "dine-in" | "takeout" | null;
   note?: string | null;
   createdByUserId?: string | null;
   createdByName?: string | null;
@@ -44,8 +47,10 @@ function serializeItems(items: CartItem[]): CartItem[] {
 }
 
 export async function createOpenOrder(data: CreateOpenOrderInput): Promise<string> {
+  const orderNumber = generateOrderNumber();
   const ref = await addDoc(collection(db, COLLECTION), {
     storeId: data.storeId,
+    orderNumber,
     items: serializeItems(data.items),
     manualDiscount: data.manualDiscount,
     seniorDiscountDetails: data.seniorDiscountDetails,
@@ -54,6 +59,7 @@ export async function createOpenOrder(data: CreateOpenOrderInput): Promise<strin
     total: data.total,
     tableId: data.tableId ?? null,
     tableLabel: data.tableLabel ?? null,
+    serviceType: data.serviceType ?? null,
     note: data.note?.trim() || null,
     createdByUserId: data.createdByUserId ?? null,
     createdByName: data.createdByName ?? null,
@@ -64,6 +70,21 @@ export async function createOpenOrder(data: CreateOpenOrderInput): Promise<strin
 
 export async function deleteOpenOrder(id: string): Promise<void> {
   await deleteDoc(doc(db, COLLECTION, id));
+}
+
+export async function updateOpenOrderAssignment(
+  id: string,
+  patch: {
+    tableId: string | null;
+    tableLabel: string | null;
+    serviceType: "dine-in" | "takeout";
+  },
+): Promise<void> {
+  await updateDoc(doc(db, COLLECTION, id), {
+    tableId: patch.tableId,
+    tableLabel: patch.tableLabel,
+    serviceType: patch.serviceType,
+  });
 }
 
 export function subscribeOpenOrders(storeId: string, onUpdate: (orders: OpenOrder[]) => void): () => void {
@@ -82,13 +103,15 @@ export function subscribeOpenOrders(storeId: string, onUpdate: (orders: OpenOrde
         total: typeof x.total === "number" ? x.total : 0,
         tableId: x.tableId ?? null,
         tableLabel: x.tableLabel ?? null,
+        serviceType: x.serviceType === "dine-in" || x.serviceType === "takeout" ? x.serviceType : null,
         note: x.note ?? null,
         createdAt: toDateSafe(x.createdAt),
         createdByUserId: x.createdByUserId ?? null,
         createdByName: x.createdByName ?? null,
+        orderNumber: typeof x.orderNumber === "number" ? x.orderNumber : undefined,
       };
     });
-    list.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    list.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
     onUpdate(list);
   });
 }

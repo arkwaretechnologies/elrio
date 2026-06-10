@@ -26,7 +26,7 @@ import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import { Calendar } from './ui/calendar';
 import { format, startOfDay } from 'date-fns';
 import { cn } from '@/lib/utils';
-import type { FloorPlanTable, RegularCustomer } from '@/lib/types';
+import type { RegularCustomer, Sale, SaleItem } from '@/lib/types';
 import { searchRegularCustomers, getRegularCustomers } from '@/services/customer-service';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from './ui/command';
 import debounce from 'lodash.debounce';
@@ -38,11 +38,15 @@ const CHECKOUT_SHOW_ON_CREDIT = false;
 /** Set to true to show the pre-order checkbox and fields again. */
 const CHECKOUT_SHOW_PRE_ORDER = false;
 
-interface TransactionDetails {
+export interface TransactionDetails {
   total: number;
   amountPaid: number;
   change: number;
   paymentMethod: 'Cash' | 'GCash' | 'On Credit';
+  pickupNumber: number;
+  orderNumber: number;
+  saleId: string;
+  sale: Sale;
 }
 
 interface CheckoutDialogProps {
@@ -53,7 +57,8 @@ interface CheckoutDialogProps {
   onCharge: () => Promise<void>;
   onTransactionComplete: (details: TransactionDetails) => void;
   isCharging: boolean;
-  selectedTable?: FloorPlanTable | null;
+  /** Set when opening Pay after cashier chose dine-in or takeout on the POS. */
+  serviceType: 'dine-in' | 'takeout';
 }
 
 const createCheckoutSchema = (total: number, showOnCredit: boolean) =>
@@ -123,7 +128,7 @@ export function CheckoutDialog({
   onCharge,
   onTransactionComplete,
   isCharging,
-  selectedTable = null,
+  serviceType,
 }: CheckoutDialogProps) {
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [isCustomerSearchOpen, setIsCustomerSearchOpen] = useState(false);
@@ -203,7 +208,7 @@ export function CheckoutDialog({
     try {
       await onCharge();
       
-      const saleId = await recordSale({
+      const result = await recordSale({
         storeId: currentStore.id,
         items: cartItems,
         subtotal,
@@ -220,9 +225,48 @@ export function CheckoutDialog({
         amountPaid: data.amountPaid,
         onCredit: data.paymentMethod === 'On Credit',
         regularCustomerId: data.regularCustomerId,
-        tableId: selectedTable?.id ?? null,
-        tableLabel: selectedTable?.label ?? null,
+        tableId: null,
+        tableLabel: null,
+        serviceType,
       });
+
+      const now = new Date();
+      const saleItems: SaleItem[] = cartItems.map((item) => ({
+        id: item.id,
+        name: item.name,
+        price: item.price,
+        quantity: item.quantity,
+        configuration: item.selectedConfiguration || null,
+        isPreOrder: data.isPreOrder,
+      }));
+      const saleForPrint: Sale = {
+        id: result.saleId,
+        storeId: currentStore.id,
+        items: saleItems,
+        subtotal,
+        discount,
+        total,
+        paymentMethod: data.paymentMethod,
+        referenceNumber: data.referenceNumber || null,
+        customerName: data.customerName || null,
+        specialInstructions: data.specialInstructions || null,
+        timestamp: now,
+        createdAt: now,
+        isPreOrder: data.isPreOrder,
+        seniorDiscountDetails: seniorDiscountDetails.totalDiscount > 0 ? seniorDiscountDetails : null,
+        phoneNumber: data.phoneNumber || null,
+        pickupDate: data.pickupDate || null,
+        amountPaid: data.amountPaid,
+        isPaidInFull: data.paymentMethod !== 'On Credit' && data.amountPaid >= total,
+        onCredit: data.paymentMethod === 'On Credit',
+        regularCustomerId: data.regularCustomerId ?? null,
+        status: 'COMPLETED',
+        tableId: null,
+        tableLabel: null,
+        serviceType,
+        orderNumber: result.orderNumber,
+        pickupNumber: result.pickupNumber,
+      };
 
       if (data.paymentMethod === 'On Credit') {
         toast({
@@ -236,6 +280,10 @@ export function CheckoutDialog({
         amountPaid: data.amountPaid,
         change: change,
         paymentMethod: data.paymentMethod,
+        pickupNumber: result.pickupNumber,
+        orderNumber: result.orderNumber,
+        saleId: result.saleId,
+        sale: saleForPrint,
       });
 
     } catch (error) {

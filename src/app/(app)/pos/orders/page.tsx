@@ -1,12 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { endOfDay, startOfDay } from "date-fns";
+import type { DateRange } from "react-day-picker";
 import { OrderHistoryClient } from "@/components/order-history-client";
 import { getSales } from "@/services/sales-service";
 import { getPayments } from "@/services/payment-service";
 import { useAuth } from "@/context/auth-context";
 import { CakeLoader } from "@/components/cake-loader";
-import { PosOpenOrdersPanel } from "@/components/pos-open-orders-panel";
+import { PosOrdersQueueSidebar } from "@/components/pos-orders-queue-sidebar";
+import { RecentCompletedOrders } from "@/components/recent-completed-orders";
+import { filterPaidSalesInRange } from "@/lib/unified-orders-queue";
 import type { Sale, Payment } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -16,6 +20,11 @@ export default function PosOrdersPage() {
   const [sales, setSales] = useState<Sale[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loadedStoreId, setLoadedStoreId] = useState<string | null>(null);
+  const [liveSales, setLiveSales] = useState<Sale[]>([]);
+  const [queueDate, setQueueDate] = useState<DateRange | undefined>({
+    from: startOfDay(new Date()),
+    to: endOfDay(new Date()),
+  });
 
   const storeId = currentStore?.id;
   const loadingOrders = !!storeId && loadedStoreId !== storeId;
@@ -27,6 +36,7 @@ export default function PosOrdersPage() {
       .then(([fetchedSales, fetchedPayments]) => {
         if (!cancelled) {
           setSales(fetchedSales);
+          setLiveSales(fetchedSales);
           setPayments(fetchedPayments);
           setLoadedStoreId(storeId);
         }
@@ -35,6 +45,7 @@ export default function PosOrdersPage() {
         console.error("Failed to load orders:", err);
         if (!cancelled) {
           setSales([]);
+          setLiveSales([]);
           setPayments([]);
           setLoadedStoreId(storeId);
         }
@@ -43,6 +54,11 @@ export default function PosOrdersPage() {
       cancelled = true;
     };
   }, [storeId]);
+
+  const paidInRange = useMemo(
+    () => filterPaidSalesInRange(liveSales, queueDate),
+    [liveSales, queueDate],
+  );
 
   if (authLoading) {
     return (
@@ -71,15 +87,28 @@ export default function PosOrdersPage() {
   }
 
   return (
-    <div className="h-full overflow-y-auto p-4 sm:p-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold tracking-tight">Orders</h1>
-        <p className="text-sm text-muted-foreground">
-          Held orders (pay later) appear below. Paid history is dine-in and takeout; pick a date range to filter.
-        </p>
+    <div className="flex h-full min-h-0 flex-col gap-4 p-4 sm:p-6 lg:flex-row lg:items-start">
+      <div className="min-w-0 flex-1 space-y-6 overflow-y-auto">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Orders</h1>
+        </div>
+        <OrderHistoryClient
+          key={currentStore.id}
+          initialSales={sales}
+          initialPayments={payments}
+          variant="embedded"
+          dateRange={queueDate}
+          onDateRangeChange={setQueueDate}
+          onSalesChange={setLiveSales}
+        />
+        <RecentCompletedOrders sales={liveSales} />
       </div>
-      <PosOpenOrdersPanel storeId={currentStore.id} />
-      <OrderHistoryClient initialSales={sales} initialPayments={payments} variant="embedded" />
+      <div className="w-full shrink-0 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:w-80 lg:shrink-0 xl:w-96">
+        <PosOrdersQueueSidebar
+          storeId={currentStore.id}
+          paidSalesInRange={paidInRange}
+        />
+      </div>
     </div>
   );
 }

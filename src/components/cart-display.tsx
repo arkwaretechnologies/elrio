@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Plus, Minus, Trash2, TicketPercent, ShoppingCart, Star, Armchair, ArrowRightLeft } from "lucide-react";
+import { Plus, Minus, Trash2, TicketPercent, ShoppingCart, Star } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
   Dialog,
@@ -19,36 +19,19 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { createOpenOrder } from "@/services/open-order-service";
-import type { FloorPlanTable, InventoryConsumption, SelectedConfigurationItem, UnitOfMeasurement } from "@/lib/types";
-import { tableChipDisplayText } from "@/lib/table-display";
 import { useAuth } from '@/context/auth-context';
+import { usePosSession } from "@/context/pos-session-context";
+import { cn } from "@/lib/utils";
 import { SupervisorPinDialog } from "./supervisor-pin-dialog";
 import { SeniorDiscountDialog } from "./senior-discount-dialog";
 import { CakeLoader } from "./cake-loader";
+import { POS_FEATURE_TABLES } from "@/lib/pos-features";
+import type { TransactionDetails } from "./checkout-dialog";
 
 const CheckoutDialog = lazy(() => import('./checkout-dialog').then((mod) => ({ default: mod.CheckoutDialog })));
 const PaymentSuccessDialog = lazy(() => import('./payment-success-dialog').then(mod => ({ default: mod.PaymentSuccessDialog })));
 
-interface TransactionDetails {
-  total: number;
-  amountPaid: number;
-  change: number;
-  paymentMethod: 'Cash' | 'GCash' | 'On Credit';
-}
-
-export function CartDisplay({
-  selectedTable = null,
-  onSelectedTableChange = () => {},
-  tableTransferChoices,
-}: {
-  selectedTable?: FloorPlanTable | null;
-  onSelectedTableChange?: (table: FloorPlanTable | null) => void;
-  /** When set (e.g. Tables page), offer moving the current cart to another table without clearing lines. */
-  tableTransferChoices?: FloorPlanTable[];
-} = {}) {
+export function CartDisplay() {
   const {
     cartItems,
     updateQuantity,
@@ -62,7 +45,8 @@ export function CartDisplay({
     seniorDiscountDetails,
     clearSeniorDiscount,
   } = useCart();
-  const { user, currentStore, inventory, reloadUser } = useAuth();
+  const { user, currentStore, reloadUser } = useAuth();
+  const { serviceMode, setServiceMode } = usePosSession();
   const { toast } = useToast();
   const [discountInput, setDiscountInput] = useState(discount > 0 ? discount.toString() : '');
   const [isDiscountDialogOpen, setIsDiscountDialogOpen] = useState(false);
@@ -73,16 +57,7 @@ export function CartDisplay({
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const [transactionDetails, setTransactionDetails] = useState<TransactionDetails | null>(null);
-  const [payLaterOpen, setPayLaterOpen] = useState(false);
-  const [payLaterNote, setPayLaterNote] = useState("");
-  const [savingHeldOrder, setSavingHeldOrder] = useState(false);
-  const [transferOpen, setTransferOpen] = useState(false);
-
-  const transferTargets =
-    selectedTable && tableTransferChoices?.length
-      ? tableTransferChoices.filter((t) => t.id !== selectedTable.id)
-      : [];
-
+  const [servicePromptOpen, setServicePromptOpen] = useState(false);
 
   const handleCharge = async () => {
     if (cartItems.length === 0 || isCharging || !currentStore) {
@@ -200,77 +175,53 @@ export function CartDisplay({
     setTransactionDetails(null);
     clearCart();
     setDiscountInput('');
-    onSelectedTableChange(null);
-  }
+    setServiceMode(null);
+  };
+
+  const pickServiceThen = (mode: "dine-in" | "takeout") => {
+    setServiceMode(mode);
+    setServicePromptOpen(false);
+    setIsCheckoutOpen(true);
+  };
+
+  const requestCheckout = () => {
+    if (cartItems.length === 0 || total <= 0) return;
+    if (!serviceMode) {
+      setServicePromptOpen(true);
+      return;
+    }
+    setIsCheckoutOpen(true);
+  };
 
   return (
     <>
     <div className="flex flex-col h-full min-h-0">
-      <CardHeader className="space-y-2 border-b border-border/60 pb-4 shrink-0 bg-card/50">
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <div className="space-y-1">
-            <CardTitle className="text-2xl font-headline tracking-tight">Current order</CardTitle>
-            <p className="text-sm text-muted-foreground">Review quantities and pay when ready</p>
-          </div>
-          {selectedTable ? (
-            <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-2.5 py-1.5 text-sm">
-              <Armchair className="h-4 w-4 shrink-0 text-primary" aria-hidden />
-              <span className="font-medium text-foreground">{tableChipDisplayText(selectedTable.label)}</span>
-              {transferTargets.length > 0 ? (
-                <Popover open={transferOpen} onOpenChange={setTransferOpen}>
-                  <PopoverTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      className="h-7 gap-1 px-2 text-xs"
-                      title="Keep cart, assign to another table"
-                    >
-                      <ArrowRightLeft className="h-3.5 w-3.5" />
-                      Transfer
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-64 p-2" align="end">
-                    <p className="mb-2 px-1 text-xs font-medium text-muted-foreground">
-                      Move this order to another table (cart stays the same)
-                    </p>
-                    <div className="flex max-h-52 flex-col gap-0.5 overflow-y-auto">
-                      {transferTargets.map((t) => (
-                        <Button
-                          key={t.id}
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="h-9 justify-start font-normal"
-                          onClick={() => {
-                            onSelectedTableChange(t);
-                            setTransferOpen(false);
-                            toast({
-                              title: "Table updated",
-                              description: `Order is now on ${tableChipDisplayText(t.label)}.`,
-                            });
-                          }}
-                        >
-                          {tableChipDisplayText(t.label)}
-                        </Button>
-                      ))}
-                    </div>
-                  </PopoverContent>
-                </Popover>
-              ) : null}
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-7 px-2 text-xs text-muted-foreground"
-                onClick={() => onSelectedTableChange(null)}
-              >
-                Clear
-              </Button>
-            </div>
-          ) : (
-            <p className="text-xs text-muted-foreground">Takeout — optional table in Tables tab</p>
-          )}
+      <CardHeader className="space-y-3 border-b border-border/60 pb-4 shrink-0 bg-card/50">
+        <div className="space-y-1">
+          <CardTitle className="text-2xl font-headline tracking-tight">Current order</CardTitle>
+          {!POS_FEATURE_TABLES ? (
+            <p className="text-xs text-muted-foreground">Pay when you order — dine-in or takeout.</p>
+          ) : null}
+        </div>
+        <div className="flex gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant={serviceMode === "dine-in" ? "default" : "outline"}
+            className={cn("flex-1", serviceMode !== "dine-in" && "text-muted-foreground")}
+            onClick={() => setServiceMode(serviceMode === "dine-in" ? null : "dine-in")}
+          >
+            Dine-in
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={serviceMode === "takeout" ? "default" : "outline"}
+            className={cn("flex-1", serviceMode !== "takeout" && "text-muted-foreground")}
+            onClick={() => setServiceMode(serviceMode === "takeout" ? null : "takeout")}
+          >
+            Takeout
+          </Button>
         </div>
       </CardHeader>
       
@@ -404,79 +355,19 @@ export function CartDisplay({
                     onOpenChange={setIsSeniorDialogOpen}
                 />
 
-                <Dialog
-                  open={payLaterOpen}
-                  onOpenChange={(o) => {
-                    setPayLaterOpen(o);
-                    if (!o) setPayLaterNote("");
-                  }}
-                >
-                  <DialogContent>
+                <Dialog open={servicePromptOpen} onOpenChange={setServicePromptOpen}>
+                  <DialogContent className="sm:max-w-sm">
                     <DialogHeader>
-                      <DialogTitle>Hold order (pay later)</DialogTitle>
+                      <DialogTitle>Dine-in or takeout?</DialogTitle>
                     </DialogHeader>
-                    <p className="text-sm text-muted-foreground">
-                      Saves this cart as an open order. Nothing is charged yet and stock is not reduced. Collect payment from{" "}
-                      <strong>Orders</strong> when the customer is ready.
-                    </p>
-                    <div className="space-y-2">
-                      <Label htmlFor="pay-later-note">Note (optional)</Label>
-                      <Textarea
-                        id="pay-later-note"
-                        placeholder="e.g. Guest name, table reminder…"
-                        value={payLaterNote}
-                        onChange={(e) => setPayLaterNote(e.target.value)}
-                        rows={2}
-                      />
+                    <div className="grid grid-cols-2 gap-2 pt-2">
+                      <Button type="button" onClick={() => pickServiceThen("dine-in")}>
+                        Dine-in
+                      </Button>
+                      <Button type="button" variant="secondary" onClick={() => pickServiceThen("takeout")}>
+                        Takeout
+                      </Button>
                     </div>
-                    <DialogFooter>
-                      <Button type="button" variant="outline" onClick={() => setPayLaterOpen(false)}>
-                        Cancel
-                      </Button>
-                      <Button
-                        type="button"
-                        disabled={savingHeldOrder || !currentStore}
-                        onClick={async () => {
-                          if (!currentStore || cartItems.length === 0) return;
-                          setSavingHeldOrder(true);
-                          try {
-                            await createOpenOrder({
-                              storeId: currentStore.id,
-                              items: cartItems,
-                              manualDiscount,
-                              seniorDiscountDetails:
-                                seniorDiscountDetails.totalDiscount > 0 ? seniorDiscountDetails : null,
-                              subtotal,
-                              discount,
-                              total,
-                              tableId: selectedTable?.id ?? null,
-                              tableLabel: selectedTable?.label ?? null,
-                              note: payLaterNote.trim() || null,
-                              createdByUserId: user?.id ?? null,
-                              createdByName: user?.fullName ?? null,
-                            });
-                            clearCart();
-                            onSelectedTableChange(null);
-                            setPayLaterOpen(false);
-                            setPayLaterNote("");
-                            toast({
-                              title: "Order held",
-                              description: "Open Orders to resume and take payment when ready.",
-                            });
-                          } catch (e) {
-                            toast({
-                              variant: "destructive",
-                              title: "Could not hold order",
-                              description: e instanceof Error ? e.message : "Try again.",
-                            });
-                          } finally {
-                            setSavingHeldOrder(false);
-                          }
-                        }}
-                      >
-                        {savingHeldOrder ? "Saving…" : "Save open order"}
-                      </Button>
-                    </DialogFooter>
                   </DialogContent>
                 </Dialog>
 
@@ -505,34 +396,20 @@ export function CartDisplay({
                     </DialogContent>
                 </Dialog>
                 
-                <div className="grid grid-cols-2 gap-2">
-                  <Button
-                    type="button"
-                    className="w-full"
-                    disabled={isCharging || savingHeldOrder || total <= 0 || cartItems.length === 0}
-                    onClick={() => setIsCheckoutOpen(true)}
-                  >
-                    {isCharging ? "Processing…" : "Pay"}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    className="w-full"
-                    disabled={isCharging || savingHeldOrder || total <= 0 || cartItems.length === 0}
-                    onClick={() => {
-                      setPayLaterNote("");
-                      setPayLaterOpen(true);
-                    }}
-                  >
-                    Pay later
-                  </Button>
-                </div>
+                <Button
+                  type="button"
+                  className="w-full"
+                  disabled={isCharging || total <= 0 || cartItems.length === 0}
+                  onClick={requestCheckout}
+                >
+                  {isCharging ? "Processing…" : "Pay"}
+                </Button>
               </div>
           </CardFooter>
       )}
     </div>
 
-    {isCheckoutOpen && (
+    {isCheckoutOpen && serviceMode && (
       <Suspense fallback={<CakeLoader />}>
         <CheckoutDialog
           open={isCheckoutOpen}
@@ -542,7 +419,7 @@ export function CartDisplay({
           onCharge={handleCharge}
           onTransactionComplete={handleTransactionComplete}
           isCharging={isCharging}
-          selectedTable={selectedTable}
+          serviceType={serviceMode}
         />
       </Suspense>
     )}

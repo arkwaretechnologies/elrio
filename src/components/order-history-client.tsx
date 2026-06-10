@@ -2,14 +2,14 @@
 
 "use client";
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { format, startOfDay, endOfDay, isWithinInterval, startOfMonth, endOfMonth, subMonths, subDays } from 'date-fns';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import type { Sale, Payment } from '@/lib/types';
 import { Button } from './ui/button';
-import { History, Eye, Ban, Calendar as CalendarIcon, HandCoins, UtensilsCrossed, ShoppingBag } from 'lucide-react';
+import { History, Eye, Ban, Calendar as CalendarIcon, HandCoins, UtensilsCrossed, ShoppingBag, Printer } from 'lucide-react';
 import { TransactionItemsDialog } from './transaction-items-dialog';
 import { useAuth } from '@/context/auth-context';
 import { SupervisorPinDialog } from './supervisor-pin-dialog';
@@ -22,6 +22,10 @@ import { cn } from '@/lib/utils';
 import { DateRange } from 'react-day-picker';
 import { Separator } from './ui/separator';
 import { tableChipDisplayText } from '@/lib/table-display';
+import { saleServiceLabel } from '@/lib/order-service-label';
+import { AssignTableDialog } from '@/components/assign-table-dialog';
+import { updateSaleTableAssignment } from '@/services/sales-service';
+import { POS_FEATURE_TABLES } from '@/lib/pos-features';
 
 function StatCard({ icon: Icon, title, value, color }: { icon?: React.ElementType, title: string, value: string | number, color: string }) {
   return (
@@ -39,27 +43,24 @@ function StatCard({ icon: Icon, title, value, color }: { icon?: React.ElementTyp
 
 type CombinedTransaction = (Sale & { type: 'Sale' }) | (Payment & { type: 'Payment' });
 
-function saleIsDineIn(sale: Sale): boolean {
-  return Boolean(sale.tableId || sale.tableLabel);
-}
-
 function SaleServiceCell({ sale }: { sale: Sale }) {
-  if (!saleIsDineIn(sale)) {
+  const label = saleServiceLabel(sale);
+  if (label === 'takeout') {
     return (
       <Badge variant="secondary" className="font-normal">
         Takeout
       </Badge>
     );
   }
-  const label = sale.tableLabel?.trim();
+  const tbl = sale.tableLabel?.trim();
   return (
     <div className="flex flex-col items-start gap-0.5">
       <Badge className="w-fit border-amber-200 bg-amber-100 font-normal text-amber-950 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
         <UtensilsCrossed className="mr-1 h-3 w-3" />
         Dine-in
       </Badge>
-      {label ? (
-        <span className="max-w-[140px] truncate text-xs text-muted-foreground">{tableChipDisplayText(label)}</span>
+      {tbl ? (
+        <span className="max-w-[140px] truncate text-xs text-muted-foreground">{tableChipDisplayText(tbl)}</span>
       ) : null}
     </div>
   );
@@ -69,44 +70,75 @@ export function OrderHistoryClient({
   initialSales,
   initialPayments,
   variant = 'standalone',
+  dateRange: dateRangeProp,
+  onDateRangeChange,
+  onSalesChange,
 }: {
   initialSales: Sale[];
   initialPayments: Payment[];
   /** `embedded`: compact header for POS Orders (parent page supplies title). */
   variant?: 'standalone' | 'embedded';
+  /** Controlled calendar range (POS Orders page + queue sidebar). */
+  dateRange?: DateRange;
+  onDateRangeChange?: (range: DateRange | undefined) => void;
+  /** Mirror of internal sales state for parent (queue). */
+  onSalesChange?: (sales: Sale[]) => void;
 }) {
   const [sales, setSales] = useState<Sale[]>(initialSales);
   const [payments, setPayments] = useState<Payment[]>(initialPayments);
-  const [date, setDate] = useState<DateRange | undefined>({ from: startOfDay(new Date()), to: endOfDay(new Date()) });
+  const [fallbackDate, setFallbackDate] = useState<DateRange | undefined>({
+    from: startOfDay(new Date()),
+    to: endOfDay(new Date()),
+  });
+  const isDateControlled = dateRangeProp !== undefined && onDateRangeChange !== undefined;
+  const date = isDateControlled ? dateRangeProp : fallbackDate;
+  const setDate = isDateControlled ? onDateRangeChange! : setFallbackDate;
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
   const [saleToVoid, setSaleToVoid] = useState<Sale | null>(null);
+  const [saleAssignTarget, setSaleAssignTarget] = useState<Sale | null>(null);
   const [isPinDialogOpen, setIsPinDialogOpen] = useState(false);
   const [isConfirmVoidOpen, setIsConfirmVoidOpen] = useState(false);
-  const { user } = useAuth();
+  const { user, currentStore } = useAuth();
   const { toast } = useToast();
+
+  useEffect(() => {
+    onSalesChange?.(sales);
+  }, [sales, onSalesChange]);
 
   const transactions = useMemo(() => {
     const combined: CombinedTransaction[] = [
       ...sales.map(s => ({ ...s, type: 'Sale' as const })),
-      ...payments.map(p => ({ ...p, type: 'Payment' as const }))
+      ...payments.map(p => ({ ...p, type: 'Payment' as const })),
     ];
 
-    const sorted = combined.sort((a, b) => {
-        const dateA = a.type === 'Sale' ? a.createdAt : a.paymentDate;
-        const dateB = b.type === 'Sale' ? b.createdAt : b.paymentDate;
+    const inRange = (() => {
+      const sorted = [...combined].sort((a, b) => {
+        const dateA = a.type === "Sale" ? a.createdAt : a.paymentDate;
+        const dateB = b.type === "Sale" ? b.createdAt : b.paymentDate;
         return dateB.getTime() - dateA.getTime();
-    });
-    
-    if (!date?.from) return sorted;
-    
-    const from = startOfDay(date.from);
-    const to = date.to ? endOfDay(date.to) : endOfDay(date.from);
+      });
 
-    return sorted.filter(t => {
-        const tDate = t.type === 'Sale' ? t.createdAt : t.paymentDate;
+      if (!date?.from) return sorted;
+
+      const from = startOfDay(date.from);
+      const to = date.to ? endOfDay(date.to) : endOfDay(date.from);
+
+      return sorted.filter((t) => {
+        const tDate = t.type === "Sale" ? t.createdAt : t.paymentDate;
         return isWithinInterval(new Date(tDate), { start: from, end: to });
-    });
-  }, [sales, payments, date]);
+      });
+    })();
+
+    if (variant === "embedded") {
+      return [...inRange].sort((a, b) => {
+        const dateA = a.type === "Sale" ? a.createdAt : a.paymentDate;
+        const dateB = b.type === "Sale" ? b.createdAt : b.paymentDate;
+        return dateA.getTime() - dateB.getTime();
+      });
+    }
+
+    return inRange;
+  }, [sales, payments, date, variant]);
   
   const completedSales = useMemo(
     () => transactions.filter((t): t is Sale & { type: 'Sale' } => t.type === 'Sale' && t.status !== 'VOIDED'),
@@ -114,11 +146,11 @@ export function OrderHistoryClient({
   );
   const totalOrders = completedSales.length;
   const dineInOrders = useMemo(
-    () => completedSales.filter((s) => saleIsDineIn(s)).length,
+    () => completedSales.filter((s) => saleServiceLabel(s) === 'dine-in').length,
     [completedSales],
   );
   const takeoutOrders = useMemo(
-    () => completedSales.filter((s) => !saleIsDineIn(s)).length,
+    () => completedSales.filter((s) => saleServiceLabel(s) === 'takeout').length,
     [completedSales],
   );
 
@@ -157,6 +189,95 @@ export function OrderHistoryClient({
       setSaleToVoid(null);
     }
   }
+
+  const renderEmbeddedRow = (transaction: CombinedTransaction) => {
+    if (transaction.type === 'Payment') {
+      return (
+        <TableRow key={`payment-${transaction.id}`}>
+          <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
+            {format(new Date(transaction.paymentDate), 'MMM d, h:mm a')}
+          </TableCell>
+          <TableCell>
+            <span className="font-semibold tabular-nums">₱{transaction.amount.toFixed(2)}</span>
+            <span className="mt-0.5 block max-w-[220px] truncate text-xs text-muted-foreground">
+              {transaction.notes || 'Payment'}
+            </span>
+          </TableCell>
+          <TableCell>
+            <Badge className="bg-green-100 text-green-800">
+              <HandCoins className="mr-1 h-3 w-3" /> Payment
+            </Badge>
+          </TableCell>
+          <TableCell className="text-right" />
+        </TableRow>
+      );
+    }
+
+    const sale = transaction;
+    return (
+      <TableRow
+        key={sale.id}
+        className={`cursor-pointer hover:bg-muted/50 ${sale.status === 'VOIDED' ? 'bg-destructive/10' : ''}`}
+        onClick={() => setSelectedSale(sale)}
+      >
+        <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
+          {format(new Date(sale.createdAt), 'MMM d, h:mm a')}
+        </TableCell>
+        <TableCell>
+          <span
+            className={`font-semibold tabular-nums ${sale.status === 'VOIDED' ? 'text-muted-foreground line-through' : 'text-primary'}`}
+          >
+            ₱{sale.total.toFixed(2)}
+          </span>
+          <span className="mt-0.5 block max-w-[220px] truncate text-xs text-muted-foreground">
+            {sale.items.map((i) => `${i.name} (×${i.quantity})`).join(', ')}
+          </span>
+        </TableCell>
+        <TableCell className="align-top">
+          <SaleServiceCell sale={sale} />
+        </TableCell>
+        <TableCell className="text-right align-top">
+          <div className="flex flex-wrap justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+            {POS_FEATURE_TABLES ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={sale.status === 'VOIDED'}
+                onClick={() => setSaleAssignTarget(sale)}
+              >
+                Table
+              </Button>
+            ) : null}
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="gap-1"
+              onClick={() =>
+                toast({
+                  title: 'Kitchen print',
+                  description: 'Not connected yet.',
+                })
+              }
+            >
+              <Printer className="h-3.5 w-3.5" />
+              Print
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="destructive"
+              disabled={sale.status === 'VOIDED'}
+              onClick={() => handleVoidClick(sale)}
+            >
+              Cancel
+            </Button>
+          </div>
+        </TableCell>
+      </TableRow>
+    );
+  };
 
   const renderTransactionRow = (transaction: CombinedTransaction) => {
     if (transaction.type === 'Payment') {
@@ -224,13 +345,7 @@ export function OrderHistoryClient({
             </p>
           </div>
         ) : (
-          <div className="min-w-0 flex-1">
-            <h2 className="text-lg font-semibold tracking-tight">Order activity</h2>
-            <p className="text-sm text-muted-foreground">
-              Every sale in range: <span className="text-foreground">Dine-in</span> shows the table;{' '}
-              <span className="text-foreground">Takeout</span> when no table was selected at checkout.
-            </p>
-          </div>
+          <div className="min-w-0 flex-1" />
         )}
         <Popover>
             <PopoverTrigger asChild>
@@ -277,42 +392,70 @@ export function OrderHistoryClient({
             </PopoverContent>
         </Popover>
       </div>
-      
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <StatCard icon={History} title="Total orders" value={totalOrders} color="text-blue-500" />
-        <StatCard icon={UtensilsCrossed} title="Dine-in" value={dineInOrders} color="text-amber-600" />
-        <StatCard icon={ShoppingBag} title="Takeout" value={takeoutOrders} color="text-muted-foreground" />
-      </div>
-      
+
+      {variant === 'standalone' && (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <StatCard icon={History} title="Total orders" value={totalOrders} color="text-blue-500" />
+          <StatCard icon={UtensilsCrossed} title="Dine-in" value={dineInOrders} color="text-amber-600" />
+          <StatCard icon={ShoppingBag} title="Takeout" value={takeoutOrders} color="text-muted-foreground" />
+        </div>
+      )}
+
       <Card>
         <CardHeader>
-            <CardTitle>Transactions</CardTitle>
+          <CardTitle>{variant === 'embedded' ? 'Paid' : 'Transactions'}</CardTitle>
         </CardHeader>
         <CardContent>
-             <div className="overflow-x-auto">
-                <Table>
-                    <TableHeader>
-                        <TableRow>
-                        <TableHead>Date & Time</TableHead>
-                        <TableHead>Customer</TableHead>
-                        <TableHead>Service</TableHead>
-                        <TableHead>Details</TableHead>
-                        <TableHead>Type</TableHead>
-                        <TableHead className="text-right">Amount</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {transactions.length > 0 ? transactions.map(renderTransactionRow) : (
-                           <TableRow>
-                                <TableCell colSpan={7} className="text-center h-24">
-                                    No transactions found for the selected period.
-                                </TableCell>
-                            </TableRow>
-                        )}
-                    </TableBody>
-                </Table>
-            </div>
+          <div className="overflow-x-auto">
+            {variant === 'embedded' ? (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[120px]">Time</TableHead>
+                    <TableHead>Order</TableHead>
+                    <TableHead className="w-[110px]">Type</TableHead>
+                    <TableHead className="w-[260px] text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {transactions.length > 0 ? (
+                    transactions.map((t) => renderEmbeddedRow(t))
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={4} className="h-24 text-center text-muted-foreground">
+                        Nothing in this range.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Date & Time</TableHead>
+                    <TableHead>Customer</TableHead>
+                    <TableHead>Service</TableHead>
+                    <TableHead>Details</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead className="text-right">Amount</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {transactions.length > 0 ? (
+                    transactions.map(renderTransactionRow)
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={7} className="h-24 text-center">
+                        No transactions found for the selected period.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            )}
+          </div>
         </CardContent>
       </Card>
     </div>
@@ -345,6 +488,45 @@ export function OrderHistoryClient({
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
+
+    {currentStore && POS_FEATURE_TABLES ? (
+      <AssignTableDialog
+        open={!!saleAssignTarget}
+        onOpenChange={(open) => !open && setSaleAssignTarget(null)}
+        storeId={currentStore.id}
+        onAssigned={async (choice) => {
+          if (!saleAssignTarget) return;
+          try {
+            await updateSaleTableAssignment(saleAssignTarget.id, {
+              tableId: choice.table?.id ?? null,
+              tableLabel: choice.table?.label ?? null,
+              serviceType: choice.serviceType,
+            });
+            setSales((prev) =>
+              prev.map((s) =>
+                s.id === saleAssignTarget.id
+                  ? {
+                      ...s,
+                      tableId: choice.table?.id ?? null,
+                      tableLabel: choice.table?.label ?? null,
+                      serviceType: choice.serviceType,
+                    }
+                  : s,
+              ),
+            );
+            toast({ title: 'Table updated' });
+          } catch (error) {
+            toast({
+              variant: 'destructive',
+              title: 'Could not update',
+              description: error instanceof Error ? error.message : 'Try again.',
+            });
+          } finally {
+            setSaleAssignTarget(null);
+          }
+        }}
+      />
+    ) : null}
 
     </>
   );

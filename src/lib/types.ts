@@ -20,11 +20,45 @@ export function floorPlanTableSize(t: Pick<FloorPlanTable, "widthPct" | "heightP
   };
 }
 
+export type PrinterConnectionType = "usb" | "bluetooth" | "ip";
+
+export type PrinterDeviceConfig = {
+  enabled: boolean;
+  connection: PrinterConnectionType;
+  usbVendorId?: number;
+  usbProductId?: number;
+  usbSerialNumber?: string;
+  usbDeviceName?: string;
+  bluetoothDeviceId?: string;
+  bluetoothDeviceName?: string;
+  ipHost?: string;
+  ipPort?: number;
+};
+
+export type StorePrinterSettings = {
+  kioskPrinting?: boolean;
+  cashier: PrinterDeviceConfig;
+  kitchen: PrinterDeviceConfig;
+};
+
+export const DEFAULT_PRINTER_DEVICE: PrinterDeviceConfig = {
+  enabled: false,
+  connection: "ip",
+  ipPort: 9100,
+};
+
+export const DEFAULT_STORE_PRINTER_SETTINGS: StorePrinterSettings = {
+  kioskPrinting: false,
+  cashier: { ...DEFAULT_PRINTER_DEVICE },
+  kitchen: { ...DEFAULT_PRINTER_DEVICE },
+};
+
 export type Store = {
   id: string;
   name: string;
   location?: string;
   floorPlanTables?: FloorPlanTable[];
+  printerSettings?: StorePrinterSettings;
 };
 
 export const unitsOfMeasurement = ['pcs', 'g', 'kg', 'mL', 'L', 'cups'] as const;
@@ -161,7 +195,11 @@ export type OpenOrder = {
   total: number;
   tableId?: string | null;
   tableLabel?: string | null;
+  /** When set at hold/checkout, labels dine-in vs takeout even without a table. */
+  serviceType?: 'dine-in' | 'takeout' | null;
   note?: string | null;
+  /** Random 7-digit customer-facing id assigned when the hold is created. */
+  orderNumber?: number;
   createdAt: Date;
   createdByUserId?: string | null;
   createdByName?: string | null;
@@ -212,6 +250,11 @@ export type Sale = {
     voidedBy?: string | null; // User ID
     tableId?: string | null;
     tableLabel?: string | null;
+    serviceType?: 'dine-in' | 'takeout' | null;
+    /** Random 7-digit customer-facing id assigned at checkout. */
+    orderNumber?: number;
+    /** Daily fast-food counter (1, 2, 3…) for staff to call orders. */
+    pickupNumber?: number;
 }
 
 export type Payment = {

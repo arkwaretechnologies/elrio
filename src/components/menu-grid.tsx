@@ -19,6 +19,23 @@ import { VariantSelectionDialog } from './variant-selection-dialog';
 import { AssortedProductDialog } from './assorted-product-dialog';
 import { CustomPriceDialog } from './custom-price-dialog';
 import { Input } from './ui/input';
+import {
+  readPosMenuSessionCache,
+  writePosMenuSessionCache,
+} from '@/lib/pos-menu-session-cache';
+
+function pickInitialCategory(fetchedCategories: Category[]): string {
+  const preferred = ['burgers', 'chicken', 'rice meals', 'cookies', 'bread rolls', 'sides', 'drinks'];
+  let initialCategory = 'All';
+  for (const p of preferred) {
+    const c = fetchedCategories.find((x) => x.name.toLowerCase() === p);
+    if (c) {
+      initialCategory = c.name;
+      break;
+    }
+  }
+  return initialCategory;
+}
 
 export function MenuGrid() {
   const [baseProducts, setBaseProducts] = useState<BaseProduct[]>([]);
@@ -39,32 +56,48 @@ export function MenuGrid() {
   }, [inventory]);
 
   useEffect(() => {
-    if (currentStore) {
+    if (!currentStore) return;
+
+    let cancelled = false;
+
+    const cached = readPosMenuSessionCache(currentStore.id);
+    if (cached) {
+      setBaseProducts(cached.baseProducts);
+      setCategories(cached.categories);
+      setAllMenuItems(cached.menuItems);
+      setActiveCategory(pickInitialCategory(cached.categories));
+      setLoading(false);
+    } else {
       setLoading(true);
-      Promise.all([
-        getMenuItemsAsBaseProducts(currentStore.id),
-        getCategories(),
-        getMenuItems(currentStore.id),
-      ]).then(([products, fetchedCategories, menuItems]) => {
+    }
+
+    Promise.all([
+      getMenuItemsAsBaseProducts(currentStore.id),
+      getCategories(),
+      getMenuItems(currentStore.id),
+    ])
+      .then(([products, fetchedCategories, menuItems]) => {
+        if (cancelled) return;
         setBaseProducts(products);
         setCategories(fetchedCategories);
         setAllMenuItems(menuItems);
-        const preferred = ['burgers', 'chicken', 'rice meals', 'cookies', 'bread rolls', 'sides', 'drinks'];
-        let initialCategory = 'All';
-        for (const p of preferred) {
-          const c = fetchedCategories.find((x) => x.name.toLowerCase() === p);
-          if (c) {
-            initialCategory = c.name;
-            break;
-          }
-        }
-        setActiveCategory(initialCategory);
-      }).catch(error => {
-        console.error("Failed to fetch menu items:", error);
-      }).finally(() => {
-        setLoading(false);
+        setActiveCategory(pickInitialCategory(fetchedCategories));
+        writePosMenuSessionCache(currentStore.id, {
+          baseProducts: products,
+          categories: fetchedCategories,
+          menuItems,
+        });
+      })
+      .catch((error) => {
+        console.error('Failed to fetch menu items:', error);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
       });
-    }
+
+    return () => {
+      cancelled = true;
+    };
   }, [currentStore]);
   
   const displayCategories = useMemo(() => {

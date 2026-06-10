@@ -17,15 +17,39 @@ import { startOfDay, endOfDay } from 'date-fns';
 import { recordCustomerPayment } from './payment-service';
 import { deductStockForSale, getInventoryItems } from './inventory-service';
 import { getMenuItems } from './menu-service';
+import { generateOrderNumber } from '@/lib/order-number';
+import { dailyCounterDocId } from '@/lib/pickup-number';
 
-export async function recordSale(saleData: RecordSalePayload): Promise<string> {
+export type RecordSaleResult = {
+    saleId: string;
+    pickupNumber: number;
+    orderNumber: number;
+};
+
+export async function recordSale(saleData: RecordSalePayload): Promise<RecordSaleResult> {
     const saleRef = doc(collection(db, 'sales'));
     const inventoryItemsList = await getInventoryItems();
     const inventoryItemById = new Map<string, InventoryItem>(inventoryItemsList.map((i) => [i.id, i]));
+    let assignedPickupNumber = 0;
+    let assignedOrderNumber = 0;
 
     try {
         await runTransaction(db, async (transaction) => {
             // --- READ PHASE ---
+            const now = new Date();
+            const counterRef = doc(
+                db,
+                'stores',
+                saleData.storeId,
+                'dailyCounters',
+                dailyCounterDocId(now),
+            );
+            const counterSnap = await transaction.get(counterRef);
+            const nextPickup =
+                counterSnap.exists() && typeof counterSnap.data()?.nextPickupNumber === 'number'
+                    ? (counterSnap.data()!.nextPickupNumber as number)
+                    : 1;
+
             let customerDoc: any = null;
             if (saleData.onCredit && saleData.regularCustomerId) {
                 const customerRef = doc(db, 'regularCustomers', saleData.regularCustomerId);
@@ -34,6 +58,9 @@ export async function recordSale(saleData: RecordSalePayload): Promise<string> {
                     throw new Error("Customer not found during transaction.");
                 }
             }
+
+            assignedPickupNumber = nextPickup;
+            assignedOrderNumber = generateOrderNumber();
 
             // --- WRITE PHASE ---
             
@@ -63,10 +90,10 @@ export async function recordSale(saleData: RecordSalePayload): Promise<string> {
                 isPreOrder: saleData.isPreOrder, // Use the overarching sale status
             }));
             
-            // Set timestamp based on whether it's a pre-order or immediate sale
-            const now = new Date();
             const finalTimestamp = saleData.isPreOrder && saleData.pickupDate ? saleData.pickupDate : now;
-            
+
+            transaction.set(counterRef, { nextPickupNumber: nextPickup + 1 }, { merge: true });
+
             // Create the final sale document
             const finalSaleData: Omit<Sale, 'id'> = {
                 storeId: saleData.storeId,
@@ -91,12 +118,19 @@ export async function recordSale(saleData: RecordSalePayload): Promise<string> {
                 status: 'COMPLETED',
                 tableId: saleData.tableId ?? null,
                 tableLabel: saleData.tableLabel ?? null,
+                serviceType: saleData.serviceType ?? null,
+                orderNumber: assignedOrderNumber,
+                pickupNumber: assignedPickupNumber,
             };
             
             transaction.set(saleRef, finalSaleData);
         });
 
-        return saleRef.id;
+        return {
+            saleId: saleRef.id,
+            pickupNumber: assignedPickupNumber,
+            orderNumber: assignedOrderNumber,
+        };
 
     } catch (error) {
         console.error("Error recording sale: ", error);
@@ -130,6 +164,17 @@ export async function getSales(storeId: string): Promise<Sale[]> {
                 sale.pickupDate = data.pickupDate.toDate();
             }
 
+            if (data.serviceType === "dine-in" || data.serviceType === "takeout") {
+                sale.serviceType = data.serviceType;
+            }
+
+            if (typeof data.orderNumber === "number") {
+                sale.orderNumber = data.orderNumber;
+            }
+            if (typeof data.pickupNumber === "number") {
+                sale.pickupNumber = data.pickupNumber;
+            }
+
             return sale as Sale;
         })
         .filter(sale => sale.storeId === storeId); // Filter by storeId on the client
@@ -161,6 +206,9 @@ export async function getSalesForToday(storeId: string): Promise<Sale[]> {
             };
             if (data.pickupDate && data.pickupDate instanceof Timestamp) {
                 sale.pickupDate = data.pickupDate.toDate();
+            }
+            if (typeof data.pickupNumber === "number") {
+                sale.pickupNumber = data.pickupNumber;
             }
             return sale as Sale;
         })
@@ -227,6 +275,30 @@ export async function settlePreOrderPayment(sale: Sale, amount: number): Promise
         `Settlement for Pre-order ID: ${sale.id.substring(0, 5)}...`, 
         sale.id
     );
+}
+
+export async function updateSaleTableAssignment(
+  saleId: string,
+  patch: {
+    tableId: string | null;
+    tableLabel: string | null;
+    serviceType?: "dine-in" | "takeout" | null;
+  },
+): Promise<void> {
+  const saleRef = doc(db, "sales", saleId);
+  await updateDoc(saleRef, {
+    tableId: patch.tableId,
+    tableLabel: patch.tableLabel,
+    ...(patch.serviceType !== undefined ? { serviceType: patch.serviceType } : {}),
+  });
+}
+
+export async function updateSalePickupNumber(
+  saleId: string,
+  pickupNumber: number,
+): Promise<void> {
+  const saleRef = doc(db, "sales", saleId);
+  await updateDoc(saleRef, { pickupNumber });
 }
 
 export async function reschedulePreOrder(saleId: string, newPickupDate: Date): Promise<void> {

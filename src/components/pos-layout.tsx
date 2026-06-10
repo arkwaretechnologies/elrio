@@ -67,6 +67,7 @@ import {
   PackageSearch,
   UtensilsCrossed,
   ShoppingBag,
+  Printer,
 } from "lucide-react"
 import { useEffect, useState, type ReactNode } from 'react';
 import { APP_LOGO_PATH } from '@/lib/branding';
@@ -261,7 +262,7 @@ export function PosLayout({ children }: { children: React.ReactNode }) {
 
   const menuItems = [
     { href: "/pos", icon: <Landmark />, text: "Point of Sale", permission: 'pos' },
-    { href: "/pos/tables", icon: <UtensilsCrossed />, text: "Tables", permission: 'tables' },
+    { href: "/pos/tables", icon: <UtensilsCrossed />, text: "Tables", permission: 'tables', hidden: true },
     { href: "/pos/orders", icon: <ShoppingBag />, text: "Orders", permission: 'orders' },
     {
       href: "/inventory",
@@ -307,6 +308,7 @@ export function PosLayout({ children }: { children: React.ReactNode }) {
       permission: 'settings',
       subItems: [
         { href: "/settings/user-management", icon: <Users />, text: "User Management" },
+        { href: "/settings/printers", icon: <Printer />, text: "Printers" },
         { href: "/settings/end-of-day", icon: <Sunset />, text: "End of Day" },
       ]
     },
