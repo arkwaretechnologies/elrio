@@ -1,0 +1,19 @@
+[debug] [2026-06-10T05:34:22.626Z] ----------------------------------------------------------------------
+[debug] [2026-06-10T05:34:22.628Z] Command:       c:\Program Files\cursor\resources\app\resources\helpers\node.exe C:\Users\Oxford\AppData\Local\npm-cache\_npx\ba4f1959e38407b5\node_modules\firebase-tools\lib\bin\firebase.js deploy --only apphosting:elrio --project el-rio-16c18 --force
+[debug] [2026-06-10T05:34:22.629Z] CLI Version:   15.19.1
+[debug] [2026-06-10T05:34:22.629Z] Platform:      win32
+[debug] [2026-06-10T05:34:22.629Z] Node Version:  v22.22.0
+[debug] [2026-06-10T05:34:22.629Z] Time:          Wed Jun 10 2026 13:34:22 GMT+0800 (Singapore Standard Time)
+[debug] [2026-06-10T05:34:22.629Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2026-06-10T05:34:24.234Z] Field "/apphosting" in "firebase.json" is possibly invalid: must be object
+[debug] [2026-06-10T05:34:24.234Z] Object "/apphosting/0" in "firebase.json" is missing required property: {"missingProperty":"ignore"}
+[debug] [2026-06-10T05:34:24.234Z] Field "/apphosting" in "firebase.json" is possibly invalid: must match a schema in anyOf
+[debug] [2026-06-10T05:34:24.237Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-06-10T05:34:24.238Z] > authorizing via signed-in user (neilandrewfuerzas@gmail.com)
+[debug] [2026-06-10T05:34:24.238Z] [iam] checking project el-rio-16c18 for permissions ["firebase.projects.get"]
+[debug] [2026-06-10T05:34:24.239Z] Checked if tokens are valid: true, expires at: 1781072899657
+[debug] [2026-06-10T05:34:24.239Z] Checked if tokens are valid: true, expires at: 1781072899657
+[debug] [2026-06-10T05:34:24.240Z] >>> [apiv2][query] POST https://cloudresourcemanager.googleapis.com/v1/projects/el-rio-16c18:testIamPermissions [none]
+[debug] [2026-06-10T05:34:24.240Z] >>> [apiv2][(partial)header] POST https://cloudresourcemanager.googleapis.com/v1/projects/el-rio-16c18:testIamPermissions  x-goog-user-project=el-rio-16c18
+[debug] [2026-06-10T05:34:24.240Z] >>> [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/el-rio-16c18:testIamPermissions {"permissions":["firebase.projects.get"]}

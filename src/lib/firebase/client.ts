@@ -18,6 +18,12 @@ const clientConfig = {
   measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
 };
 
+function hasExplicitFirebaseConfig(
+  config: typeof clientConfig
+): config is Required<typeof clientConfig> {
+  return !!(config.apiKey && config.projectId && config.appId);
+}
+
 /**
  * IndexedDB + multi-tab persistence requires a real browser with LocalStorage.
  * Next.js SSR and some embedded / locked-down environments lack that; using
@@ -36,8 +42,14 @@ function canUseFirestorePersistentCache(): boolean {
   }
 }
 
-// Initialize Firebase for the client
-const clientApp = !getApps().length ? initializeApp(clientConfig) : getApp();
+// Initialize Firebase for the client.
+// Local dev: NEXT_PUBLIC_FIREBASE_* from .env.local.
+// App Hosting: apphosting.yaml env vars and/or initializeApp() with no args (FIREBASE_WEBAPP_CONFIG).
+const clientApp = !getApps().length
+  ? hasExplicitFirebaseConfig(clientConfig)
+    ? initializeApp(clientConfig)
+    : initializeApp()
+  : getApp();
 
 const db = initializeFirestore(clientApp, {
   localCache: canUseFirestorePersistentCache()

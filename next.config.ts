@@ -8,7 +8,7 @@ const withPWA = require('next-pwa')({
     // Firestore / Auth must bypass the SW — caching or stale handlers break WebChannel (login, snapshots).
     {
       urlPattern:
-        /^https:\/\/(firestore|securetoken|identitytoolkit|firebaseinstallations)\.googleapis\.com\/.*/i,
+        /^https:\/\/(firestore|content-firestore|securetoken|identitytoolkit|firebaseinstallations|firebase|www)\.googleapis\.com\/.*/i,
       handler: 'NetworkOnly',
     },
     {

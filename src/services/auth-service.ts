@@ -17,7 +17,7 @@ function rethrowFirestore(err: unknown): never {
     }
     if (err.code === 'unavailable' || err.code === 'failed-precondition') {
       throw new Error(
-        'Cannot reach Firestore. If you use the installed PWA, update the app (rebuild + hard refresh) or unregister the service worker. Also confirm NEXT_PUBLIC_FIREBASE_* matches your project.'
+        'Cannot reach Firestore. If you use the installed PWA, update the app (rebuild + hard refresh) or unregister the service worker. If this persists after an update, confirm Firebase client config (NEXT_PUBLIC_FIREBASE_*) is set for the live build.'
       );
     }
   }
