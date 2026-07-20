@@ -48,6 +48,7 @@ import { useEffect, useState } from 'react';
 import { APP_LOGO_PATH } from '@/lib/branding';
 import { getLogoUrl } from '@/services/logo-service';
 import { PwaInstallButton } from './pwa-install-button';
+import { POS_FEATURE_TABLES } from '@/lib/pos-features';
 
 export function SuperAdminLayout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
@@ -67,7 +68,7 @@ export function SuperAdminLayout({ children }: { children: React.ReactNode }) {
     { href: "/super-admin/products", icon: <Package />, text: "Product Management" },
     { href: "/super-admin/inventory-items", icon: <Archive />, text: "Inventory Items" },
     { href: "/super-admin/stores", icon: <Store />, text: "Store Management"},
-    { href: "/super-admin/tables", icon: <Grid3x3 />, text: "Table / Floor plan" },
+    { href: "/super-admin/tables", icon: <Grid3x3 />, text: "Table / Floor plan", hidden: !POS_FEATURE_TABLES },
     { href: "/super-admin/categories", icon: <Shapes />, text: "Category Management"},
     { href: "/super-admin/user-management", icon: <Users />, text: "User Management" },
     { href: "/super-admin/data", icon: <DatabaseZap />, text: "System Settings" },
@@ -87,6 +88,7 @@ export function SuperAdminLayout({ children }: { children: React.ReactNode }) {
         <SidebarContent className="py-3">
           <SidebarMenu>
             {menuItems.map((item) => {
+              if ("hidden" in item && item.hidden) return null;
               const isActive =
                 item.href === "/super-admin"
                   ? pathname === "/super-admin"

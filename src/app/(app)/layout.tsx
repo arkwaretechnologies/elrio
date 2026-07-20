@@ -27,7 +27,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
   return (
     <CartProvider>
       <PosLayout>
-        <div className="relative h-full">
+        <div className="relative flex h-full min-h-0 flex-col">
           {children}
         </div>
       </PosLayout>

@@ -327,6 +327,7 @@ export function PosLayout({ children }: { children: React.ReactNode }) {
 
   const isAdminOrOwner = user?.role === 'Admin' || user?.role === 'Owner';
   const sidebarDefaultOpen = !pathname.startsWith("/pos");
+  const isPosRegister = pathname === "/pos";
 
   return (
     <SidebarProvider defaultOpen={sidebarDefaultOpen}>
@@ -400,7 +401,13 @@ export function PosLayout({ children }: { children: React.ReactNode }) {
       </Sidebar>
       <SidebarInset className="bg-background">
         <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
-          <main className="min-h-0 flex-1 overflow-y-auto bg-background pb-[calc(4rem+env(safe-area-inset-bottom))] lg:pb-0">
+          <main
+            className={
+              isPosRegister
+                ? "flex min-h-0 flex-1 flex-col overflow-y-auto bg-background pb-[calc(4rem+env(safe-area-inset-bottom))] md:overflow-hidden lg:pb-0"
+                : "min-h-0 flex-1 overflow-y-auto bg-background pb-[calc(4rem+env(safe-area-inset-bottom))] lg:pb-0"
+            }
+          >
             {children}
           </main>
         </div>
