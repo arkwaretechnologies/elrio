@@ -22,7 +22,6 @@ import {
   SidebarMenuSub,
   SidebarMenuSubButton,
   SidebarMenuSubItem,
-  SidebarMobileHeader,
   SidebarRail,
   SidebarTrigger,
   useSidebar,
@@ -74,6 +73,7 @@ import { APP_LOGO_PATH } from '@/lib/branding';
 import { getLogoUrl } from '@/services/logo-service';
 import { PwaInstallButton } from './pwa-install-button';
 import { StoreSwitcher } from './store-switcher';
+import { PosBottomNav } from './pos-bottom-nav';
 import type { PermissionId } from '@/lib/types';
 import { canAccessPosRoute } from '@/lib/types';
 
@@ -245,6 +245,17 @@ function PosNavigationMenu({
   );
 }
 
+function CloseMobileNavOnNavigate() {
+  const pathname = usePathname();
+  const { isMobile, setOpenMobile } = useSidebar();
+
+  useEffect(() => {
+    if (isMobile) setOpenMobile(false);
+  }, [pathname, isMobile, setOpenMobile]);
+
+  return null;
+}
+
 export function PosLayout({ children }: { children: React.ReactNode }) {
   const { clearCart } = useCart()
   const { user, logout } = useAuth();
@@ -319,6 +330,7 @@ export function PosLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <SidebarProvider defaultOpen={sidebarDefaultOpen}>
+      <CloseMobileNavOnNavigate />
       <Sidebar collapsible="icon">
         <SidebarRail />
         <SidebarHeader className="relative border-b border-sidebar-border/50 p-4">
@@ -387,12 +399,12 @@ export function PosLayout({ children }: { children: React.ReactNode }) {
         </SidebarFooter>
       </Sidebar>
       <SidebarInset className="bg-background">
-        <SidebarMobileHeader title="El Rio POS" />
         <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
-          <main className="min-h-0 flex-1 overflow-y-auto bg-background">
+          <main className="min-h-0 flex-1 overflow-y-auto bg-background pb-[calc(4rem+env(safe-area-inset-bottom))] lg:pb-0">
             {children}
           </main>
         </div>
+        <PosBottomNav />
       </SidebarInset>
     </SidebarProvider>
   )

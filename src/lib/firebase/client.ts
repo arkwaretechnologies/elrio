@@ -68,22 +68,12 @@ function canUseFirestorePersistentCache(): boolean {
   }
 }
 
-// #region agent log
-fetch('http://127.0.0.1:7724/ingest/76fed993-46c6-4f16-8f53-acad38587d60',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'dd2995'},body:JSON.stringify({sessionId:'dd2995',location:'firebase/client.ts:init',message:'firebase client module init',data:{hasNextPublic:hasExplicitFirebaseConfig(clientConfig),hasWebappConfig:!!process.env.FIREBASE_WEBAPP_CONFIG,isWindow:typeof window!=='undefined',nodeEnv:process.env.NODE_ENV},timestamp:Date.now(),hypothesisId:'A-B-D'})}).catch(()=>{});
-// #endregion
-
 // Initialize Firebase for the client.
 // Local dev: NEXT_PUBLIC_FIREBASE_* from .env.local.
 // App Hosting: FIREBASE_WEBAPP_CONFIG (build) or NEXT_PUBLIC_* from console env.
 const resolvedConfig = resolveClientConfig();
-// #region agent log
-fetch('http://127.0.0.1:7724/ingest/76fed993-46c6-4f16-8f53-acad38587d60',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'dd2995'},body:JSON.stringify({sessionId:'dd2995',location:'firebase/client.ts:resolved',message:'resolved firebase config',data:{hasResolved:hasExplicitFirebaseConfig(resolvedConfig),projectId:resolvedConfig.projectId??null,appId:resolvedConfig.appId??null},timestamp:Date.now(),hypothesisId:'B-D'})}).catch(()=>{});
-// #endregion
 
 if (!hasExplicitFirebaseConfig(resolvedConfig)) {
-  // #region agent log
-  fetch('http://127.0.0.1:7724/ingest/76fed993-46c6-4f16-8f53-acad38587d60',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'dd2995'},body:JSON.stringify({sessionId:'dd2995',location:'firebase/client.ts:missing-config',message:'firebase config missing at init',data:{hasWebapp:!!process.env.FIREBASE_WEBAPP_CONFIG},timestamp:Date.now(),hypothesisId:'A-C-E',runId:'post-fix'})}).catch(()=>{});
-  // #endregion
   throw new Error(
     'Firebase client config missing. Set NEXT_PUBLIC_FIREBASE_* in .env.local, or deploy on Firebase App Hosting (FIREBASE_WEBAPP_CONFIG).',
   );
